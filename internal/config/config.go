@@ -90,6 +90,7 @@ type NotificationDetails struct {
 
 // // 
 
+// LoadConfig reads a YAML file from path and expands any ${ENV_VAR} references.
 func LoadConfig(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -108,6 +109,7 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// ModifyConfig expands environment variables in string fields in-place.
 func ModifyConfig(cfg *Config) {
 	for i := range cfg.Databases {
 		db := &cfg.Databases[i]

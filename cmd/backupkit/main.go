@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-
+	// CLI entrypoint wiring; commands are stubbed for now.
 	app := &cli.App{
 		Name:  "backupkit",
 		Usage: "simple backups for local projects",
