@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dev-tams/backupkit/internal/app"
+	"github.com/dev-tams/backupkit/internal/config"
 	"github.com/urfave/cli/v2"
 )
 
@@ -24,7 +26,13 @@ func main() {
 			{
 				Name:  "backup",
 				Usage: "run a backup of the configured project",
-				Action: func(_ *cli.Context) error {
+				Action: func(c *cli.Context) error {
+					cfgPath := c.String("config")
+					cfg, err := config.LoadConfig(cfgPath)
+					if err != nil {
+						return err
+					}
+					app.RunBackup(c.Context, cfg)
 					fmt.Println("running backup")
 					return nil
 				},
@@ -44,6 +52,14 @@ func main() {
 					fmt.Println("running daemon")
 					return nil
 				},
+			},
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "config",
+				Aliases:  []string{"c"},
+				Required: true,
+				Usage:    "path to config yaml",
 			},
 		},
 	}

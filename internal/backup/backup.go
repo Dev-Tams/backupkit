@@ -11,5 +11,5 @@ import (
 // consuming it and handling process lifecycle as needed.
 
 type Backupper interface {
-	Backup(ctx context.Context, cfg config.DatabaseConfig) (io.Reader, error)
+	Backup(ctx context.Context, cfg config.DatabaseConfig) (io.ReadCloser, error)
 }
