@@ -15,7 +15,7 @@ import (
 type PostgresBackupper struct{}
 
 // Backup streams a pg_dump custom-format archive for the given database config.
-func (backup PostgresBackupper) Backup(ctx context.Context, cfg config.DatabaseConfig) (io.Reader, error) {
+func (backup PostgresBackupper) Backup(ctx context.Context, cfg config.DatabaseConfig) (io.ReadCloser, error) {
 
 	if _, err := exec.LookPath("pg_dump"); err != nil {
 		return nil, fmt.Errorf(" pg_dump not found in PATH: %w", err)
