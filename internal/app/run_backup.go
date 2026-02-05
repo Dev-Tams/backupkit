@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/dev-tams/backupkit/internal/backup"
+	"github.com/dev-tams/backupkit/internal/compression"
 	"github.com/dev-tams/backupkit/internal/config"
 )
-
 
 // For now: the dump stream to a local file path like:
 // ./backups/<dbName>/<timestamp>.dump
@@ -44,14 +44,10 @@ func RunBackup(ctx context.Context, cfg *config.Config) error {
 		if err != nil{
 			return fmt.Errorf(" create output file: %w", err)
 		}
-		n, copyErr := io.Copy(f, r)
-		closeErr := f.Close()
+		n, err := compression.Gzip(f, r)
 
-		if copyErr != nil {
-			return fmt.Errorf("write dump: %w", copyErr)
-		}
-		if closeErr != nil {
-			return fmt.Errorf("close file: %w", closeErr)
+		if err != nil {
+			return fmt.Errorf("compress backup: %w", err)
 		}
 		fmt.Printf("backup OK: db=%s bytes=%d file=%s\n", db.Name, n, outPath)
 	}
