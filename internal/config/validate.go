@@ -2,16 +2,15 @@ package config
 
 import "fmt"
 
-
 //simple range over values to validate needed variables
 
-func (c *Config) Validate() error{
+func (c *Config) Validate() error {
 	if c.Version == 0 {
 		return fmt.Errorf(" config.Version must be > 0")
 	}
 	storageNames := map[string]struct{}{}
-	for _, st := range c.Storage{
-		if st.Name == ""{
+	for _, st := range c.Storage {
+		if st.Name == "" {
 			return fmt.Errorf(" storage.Name is required")
 		}
 		if _, ok := storageNames[st.Name]; ok {
@@ -19,9 +18,25 @@ func (c *Config) Validate() error{
 		}
 		storageNames[st.Name] = struct{}{}
 
-		if st.Type == "" {
-			return fmt.Errorf(" storage.Type is required for storage %s", st.Name)
+		switch st.Type {
+		case "local":
+			if st.Local == nil || st.Local.Path == "" {
+				return fmt.Errorf("storage %s: local.path is required", st.Name)
+			}
+			if st.S3 != nil {
+				return fmt.Errorf("storage %s: type local must not set s3 config", st.Name)
+			}
+		case "s3":
+			if st.S3 == nil || st.S3.Bucket == "" || st.S3.Region == "" {
+				return fmt.Errorf("storage %s: s3.bucket and s3.region are required", st.Name)
+			}
+			if st.Local != nil {
+				return fmt.Errorf("storage %s: type s3 must not set local config", st.Name)
+			}
+		default:
+			return fmt.Errorf("storage %s: unknown type %q", st.Name, st.Type)
 		}
+
 	}
 
 	for i, db := range c.Databases {
@@ -42,5 +57,5 @@ func (c *Config) Validate() error{
 			return fmt.Errorf("databases[%d] backup.storage=%q not found in storage list", i, db.Backup.Storage)
 		}
 	}
-	return  nil
+	return nil
 }
