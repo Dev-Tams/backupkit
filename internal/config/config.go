@@ -7,18 +7,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-
-
 type Config struct {
-	Version       int                 `yaml:"version"`
-	Databases     []DatabaseConfig    `yaml:"databases"`
-	Storage       []StorageConfig     `yaml:"storage"`
+	Version       int                  `yaml:"version"`
+	Databases     []DatabaseConfig     `yaml:"databases"`
+	Storage       []StorageConfig      `yaml:"storage"`
 	Notifications []NotificationConfig `yaml:"notifications"`
 }
 
 type DatabaseConfig struct {
-	Name       string          `yaml:"name"`
-	Type       string          `yaml:"type"`
+	Name       string           `yaml:"name"`
+	Type       string           `yaml:"type"`
 	Connection ConnectionConfig `yaml:"connection"`
 	Backup     BackupConfig     `yaml:"backup"`
 	Retention  RetentionConfig  `yaml:"retention"`
@@ -51,9 +49,15 @@ type RetentionConfig struct {
 }
 
 type StorageConfig struct {
-	Name   string    `yaml:"name"`
-	Type   string    `yaml:"type"`
-	Config S3Config  `yaml:"config"`
+	Name   string   `yaml:"name"`
+	Type   string   `yaml:"type"`
+	Local  *LocalConfig `yaml:"local,omitempty"`
+	S3     *S3Config      `yaml:"s3,omitempty"`
+}
+
+
+type LocalConfig struct {
+	Path string `yaml:"path"`
 }
 
 type S3Config struct {
@@ -65,9 +69,9 @@ type S3Config struct {
 }
 
 type NotificationConfig struct {
-	Type   string                 `yaml:"type"`
-	On     []string               `yaml:"on"`
-	Config NotificationDetails    `yaml:"config"`
+	Type   string              `yaml:"type"`
+	On     []string            `yaml:"on"`
+	Config NotificationDetails `yaml:"config"`
 }
 
 type NotificationDetails struct {
@@ -82,73 +86,59 @@ type NotificationDetails struct {
 }
 
 
-// Create a new Viper instance (don't use the global one — using a dedicated instance is cleaner and more testable)
-// Tell it the config file path
-// Tell it to read the file — and handle the error if reading fails
-// Unmarshal into a Config struct — and handle that error too
-// Return the config and nil for the error if everything worked
 
-// // 
-
-// LoadConfig reads a YAML file from path and expands any ${ENV_VAR} references.
+// match the config file with the yaml file
 func LoadConfig(path string) (*Config, error) {
+
+	var cfg Config
+
 	v := viper.New()
 	v.SetConfigFile(path)
 
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		return nil, fmt.Errorf(" failed to read config: %w", err)
 	}
 
-	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		return nil, fmt.Errorf(" failed to unmarshall config :%w", err)
 	}
-
-	ModifyConfig(&cfg)
-
+	expandEnvVars(&cfg)
+	
 	return &cfg, nil
 }
 
-// ModifyConfig expands environment variables in string fields in-place.
-func ModifyConfig(cfg *Config) {
-	for i := range cfg.Databases {
-		db := &cfg.Databases[i]
-		db.Name = os.ExpandEnv(db.Name)
-		db.Type = os.ExpandEnv(db.Type)
-		db.Connection.Host = os.ExpandEnv(db.Connection.Host)
-		db.Connection.Database = os.ExpandEnv(db.Connection.Database)
-		db.Connection.User = os.ExpandEnv(db.Connection.User)
-		db.Connection.Password = os.ExpandEnv(db.Connection.Password)
-		db.Backup.Schedule = os.ExpandEnv(db.Backup.Schedule)
-		db.Backup.Storage = os.ExpandEnv(db.Backup.Storage)
-		db.Backup.Encryption.Password = os.ExpandEnv(db.Backup.Encryption.Password)
-	}
+// Loop through the slices where needed (databases, storage, notifications are all slices)
+// Called os.ExpandEnv on each of the fields identified
+// and modify the needed places.
+func expandEnvVars(cfg *Config) {
+    if cfg == nil {
+        return
+    }
 
-	for i := range cfg.Storage {
-		st := &cfg.Storage[i]
-		st.Name = os.ExpandEnv(st.Name)
-		st.Type = os.ExpandEnv(st.Type)
-		st.Config.Bucket = os.ExpandEnv(st.Config.Bucket)
-		st.Config.Region = os.ExpandEnv(st.Config.Region)
-		st.Config.Prefix = os.ExpandEnv(st.Config.Prefix)
-		st.Config.AccessKey = os.ExpandEnv(st.Config.AccessKey)
-		st.Config.SecretKey = os.ExpandEnv(st.Config.SecretKey)
-	}
+    for i := range cfg.Databases {
+        db := &cfg.Databases[i]
+        db.Connection.Password = os.ExpandEnv(db.Connection.Password)
+        db.Backup.Encryption.Password = os.ExpandEnv(db.Backup.Encryption.Password)
+    }
 
-	for i := range cfg.Notifications {
-		nt := &cfg.Notifications[i]
-		nt.Type = os.ExpandEnv(nt.Type)
-		for j := range nt.On {
-			nt.On[j] = os.ExpandEnv(nt.On[j])
-		}
-		nt.Config.SMTPHost = os.ExpandEnv(nt.Config.SMTPHost)
-		nt.Config.From = os.ExpandEnv(nt.Config.From)
-		nt.Config.To = os.ExpandEnv(nt.Config.To)
-		nt.Config.Username = os.ExpandEnv(nt.Config.Username)
-		nt.Config.Password = os.ExpandEnv(nt.Config.Password)
-		nt.Config.URL = os.ExpandEnv(nt.Config.URL)
-		for k, v := range nt.Config.Headers {
-			nt.Config.Headers[k] = os.ExpandEnv(v)
-		}
-	}
+    for i := range cfg.Storage {
+        st := &cfg.Storage[i]
+        if st.S3 != nil {
+            st.S3.AccessKey = os.ExpandEnv(st.S3.AccessKey)
+            st.S3.SecretKey = os.ExpandEnv(st.S3.SecretKey)
+        }
+    }
+
+    for i := range cfg.Notifications {
+        nt := &cfg.Notifications[i]
+        if nt.Config.Username != "" {
+            nt.Config.Username = os.ExpandEnv(nt.Config.Username)
+        }
+        if nt.Config.Password != "" {
+            nt.Config.Password = os.ExpandEnv(nt.Config.Password)
+        }
+        if nt.Config.URL != "" {
+            nt.Config.URL = os.ExpandEnv(nt.Config.URL)
+        }
+    }
 }
