@@ -32,9 +32,11 @@ func main() {
 					if err != nil {
 						return err
 					}
-					app.RunBackup(c.Context, cfg)
-					fmt.Println("running backup")
-					return nil
+					if err := cfg.Validate(); err != nil {
+						return err
+					}
+
+					return app.RunBackup(c.Context, cfg)
 				},
 			},
 			{
