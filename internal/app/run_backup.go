@@ -24,7 +24,7 @@ func RunBackup(ctx context.Context, cfg *config.Config) error {
 	pg := backup.PostgresBackupper{}
 
 	for _, db := range cfg.Databases {
-		if db.Type != "postgress" {
+		if db.Type != "postgres" {
 			return fmt.Errorf("unsupported database type: %s {db: %s}", db.Name, db.Type)
 		}
 		r, err := pg.Backup(ctx, db)
@@ -33,10 +33,10 @@ func RunBackup(ctx context.Context, cfg *config.Config) error {
 		}
 		defer r.Close()
 
-		ts := time.Now().Format("20060102_150405")
+		ts := time.Now().Format("20060102_150405.000000000Z")
 		outDir := filepath.Join("backups", db.Name)
-		if err := os.Mkdir(outDir, 0o755); err != nil {
-			return fmt.Errorf("create outpuut dir : %w", err)
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			return fmt.Errorf("create output dir: %w", err)
 		}
 
 		outPath := filepath.Join(outDir, ts + ".dump")
