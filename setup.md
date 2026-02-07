@@ -1,7 +1,7 @@
 # BackupKit - Context Memory
 
 ## What This Is
-You are building BackupKit, a Go-based CLI tool for automated database backups. This is Project 1 of 2 (Project 2 is RelayHook, a webhook relay service — separate context file). Both are being built linearly: BackupKit first, then RelayHook.
+building BackupKit, a Go-based CLI tool for automated database backups. This is Project 1 of 2 (Project 2 is RelayHook, a webhook relay service — separate context file). Both are being built linearly: BackupKit first, then RelayHook.
 
 ---
 

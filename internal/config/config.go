@@ -12,6 +12,7 @@ type Config struct {
 	Databases     []DatabaseConfig     `yaml:"databases"`
 	Storage       []StorageConfig      `yaml:"storage"`
 	Notifications []NotificationConfig `yaml:"notifications"`
+	Verbose       bool                 `yaml:"-" mapstructure:"-"`
 }
 
 type DatabaseConfig struct {

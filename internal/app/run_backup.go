@@ -26,6 +26,14 @@ func RunBackup(ctx context.Context, cfg *config.Config) error {
 		if db.Type != "postgres" {
 			return fmt.Errorf("unsupported database type: %s {db: %s}", db.Name, db.Type)
 		}
+		if cfg.Verbose {
+			fmt.Printf(
+				"pipeline: db=%s compression=%v encryption=%v\n",
+				db.Name,
+				db.Backup.Compression,
+				db.Backup.Encryption.Enabled,
+			)
+		}
 		r, err := pg.Backup(ctx, db)
 		if err != nil {
 			return fmt.Errorf("backup failed for %s: %w", db.Name, err)

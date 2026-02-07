@@ -32,6 +32,7 @@ func main() {
 					if err != nil {
 						return err
 					}
+					cfg.Verbose = c.Bool("verbose")
 					if err := cfg.Validate(); err != nil {
 						return err
 					}
@@ -62,6 +63,10 @@ func main() {
 				Aliases:  []string{"c"},
 				Required: true,
 				Usage:    "path to config yaml",
+			},
+			&cli.BoolFlag{
+				Name:  "verbose",
+				Usage: "enable verbose logging",
 			},
 		},
 	}
