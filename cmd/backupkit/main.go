@@ -32,12 +32,11 @@ func main() {
 					if err != nil {
 						return err
 					}
-					cfg.Verbose = c.Bool("verbose")
 					if err := cfg.Validate(); err != nil {
 						return err
 					}
 
-					return app.RunBackup(c.Context, cfg)
+					return app.RunBackup(c.Context, cfg, c.Bool("verbose"))
 				},
 			},
 			{
