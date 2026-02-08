@@ -61,7 +61,7 @@ func (s *Storage) Name() string {
 	return s.name
 }
 
-func (s *Storage) OpenWriter(ctx context.Context, key string) (Writer, error) {
+func (s *Storage) OpenWriter(ctx context.Context, key string) (io.WriteCloser, string, error) {
 
 	//turns the streaming pipeline into an s3 req body
 	pr, pw := io.Pipe()
@@ -76,8 +76,7 @@ func (s *Storage) OpenWriter(ctx context.Context, key string) (Writer, error) {
 	w := &uploadWriter{
 		pw:      pw,
 		loc:     fmt.Sprintf("s3://%s/%s", s.bucket, fullKey),
-		done:    make(chan error, 1),
-		closeCh: make(chan struct{}),
+		done: make(chan error, 1),
 	}
 
 	//start upload in gorountine
@@ -96,7 +95,7 @@ func (s *Storage) OpenWriter(ctx context.Context, key string) (Writer, error) {
 
 		if err != nil {
 			if apiErr, ok := err.(smithy.APIError); ok {
-				w.done <- fmt.Errorf(" s3 putobjet failed: %s: %s", apiErr.ErrorCode(), apiErr.ErrorMessage())
+				w.done <- fmt.Errorf("s3 putobjet failed: %s: %s", apiErr.ErrorCode(), apiErr.ErrorMessage())
 				return
 			}
 			w.done <- fmt.Errorf("s3 putobjet failed: %w", err)
@@ -105,19 +104,13 @@ func (s *Storage) OpenWriter(ctx context.Context, key string) (Writer, error) {
 		w.done <- nil
 	}()
 
-	return w, nil
-}
-
-type Writer interface {
-	io.WriteCloser
-	Location() string
+	return w, w.loc, nil
 }
 
 type uploadWriter struct {
 	pw      *io.PipeWriter
 	loc     string
 	done    chan error
-	closeCh chan struct{}
 	closed  bool
 }
 
