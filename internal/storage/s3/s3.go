@@ -83,7 +83,6 @@ func (s *Storage) OpenWriter(ctx context.Context, key string) (io.WriteCloser, s
 
 	// PutObject reads from pr while your app writes to pw.
 	go func() {
-		defer close(w.closeCh)
 		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    aws.String(fullKey),

@@ -19,7 +19,7 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 		return err
 	}
 
-	stores, err := storage.FromConfig(cfg)
+	stores, err := storage.FromConfig(ctx, cfg)
 	if err != nil {
 		return err
 	}
