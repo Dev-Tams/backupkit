@@ -33,6 +33,13 @@ func (c *Config) Validate() error {
 			if st.Local != nil {
 				return fmt.Errorf("storage %s: type s3 must not set local config", st.Name)
 			}
+			if st.S3.AccessKey == "" || st.S3.SecretKey == "" {
+				return fmt.Errorf("storage %s: s3.access_key and s3.secret_key are required (or env expansion failed)", st.Name)
+			}
+			if st.S3.Bucket == "" || st.S3.Region == "" {
+				return fmt.Errorf("storage %s: s3.bucket and s3.region are required", st.Name)
+			}
+
 		default:
 			return fmt.Errorf("storage %s: unknown type %q", st.Name, st.Type)
 		}
