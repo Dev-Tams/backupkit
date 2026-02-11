@@ -19,7 +19,12 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 		return err
 	}
 
-	stores, err := storage.FromConfig(ctx, cfg)
+	usedStorage := make(map[string]struct{}, len(cfg.Databases))
+	for _, db := range cfg.Databases {
+		usedStorage[db.Backup.Storage] = struct{}{}
+	}
+
+	stores, err := storage.FromConfigByNames(ctx, cfg, usedStorage)
 	if err != nil {
 		return err
 	}
