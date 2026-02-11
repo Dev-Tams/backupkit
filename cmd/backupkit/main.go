@@ -26,17 +26,44 @@ func main() {
 			{
 				Name:  "backup",
 				Usage: "run a backup of the configured project",
+				Flags: backupOrRestoreFlags(),
 				Action: func(c *cli.Context) error {
-					cfgPath := c.String("config")
-					cfg, err := config.LoadConfig(cfgPath)
+					cfg, err := loadValidatedConfig(c.String("config"))
 					if err != nil {
-						return err
-					}
-					if err := cfg.Validate(); err != nil {
 						return err
 					}
 
 					return app.RunBackup(c.Context, cfg, c.Bool("verbose"))
+				},
+			},
+			{
+				Name:  "restore",
+				Usage: "restore a backup into a configured database",
+				Flags: append(
+					backupOrRestoreFlags(),
+					&cli.StringFlag{
+						Name:  "db",
+						Usage: "database name from config (optional; defaults to first database)",
+					},
+					&cli.StringFlag{
+						Name:     "from",
+						Required: true,
+						Usage:    "path to backup file to restore",
+					},
+				),
+				Action: func(c *cli.Context) error {
+					cfg, err := loadValidatedConfig(c.String("config"))
+					if err != nil {
+						return err
+					}
+
+					return app.RunRestore(
+						c.Context,
+						cfg,
+						c.String("db"),
+						c.String("from"),
+						c.Bool("verbose"),
+					)
 				},
 			},
 			{
@@ -56,22 +83,36 @@ func main() {
 				},
 			},
 		},
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "config",
-				Aliases:  []string{"c"},
-				Required: true,
-				Usage:    "path to config yaml",
-			},
-			&cli.BoolFlag{
-				Name:  "verbose",
-				Usage: "enable verbose logging",
-			},
-		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func backupOrRestoreFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:     "config",
+			Aliases:  []string{"c"},
+			Required: true,
+			Usage:    "path to config yaml",
+		},
+		&cli.BoolFlag{
+			Name:  "verbose",
+			Usage: "enable verbose logging",
+		},
+	}
+}
+
+func loadValidatedConfig(cfgPath string) (*config.Config, error) {
+	cfg, err := config.LoadConfig(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
