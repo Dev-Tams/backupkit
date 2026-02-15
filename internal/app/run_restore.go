@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +16,21 @@ import (
 	"github.com/dev-tams/backupkit/internal/config"
 )
 
-func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath string, verbose bool) error {
+var (
+	encMagic   = []byte("BKENC001")
+	gzipMagic  = []byte{0x1f, 0x8b}
+	pgdmpMagic = []byte("PGDMP")
+)
+
+func RunRestore(
+	ctx context.Context,
+	cfg *config.Config,
+	dbName string,
+	fromPath string,
+	verbose bool,
+	clean bool,
+	strictSniff bool,
+) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -48,9 +64,29 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 
 	f, err := os.Open(fromPath)
 	if err != nil {
-		return fmt.Errorf("open backup file: %w", err)
+		return fmt.Errorf("restore/open: %w", err)
 	}
 	defer f.Close()
+
+	rawKind, err := sniffRawKind(f)
+	if err != nil {
+		return fmt.Errorf("restore/sniff: %w", err)
+	}
+
+	expectedRaw := expectedRawKind(db.Backup.Compression, db.Backup.Encryption.Enabled)
+	if rawKind != expectedRaw {
+		msg := fmt.Sprintf(
+			"backup header mismatch for db=%s: expected %q from config, got %q (%s)",
+			db.Name,
+			expectedRaw,
+			rawKind,
+			fromPath,
+		)
+		if strictSniff {
+			return fmt.Errorf("restore/sniff: %s", msg)
+		}
+		fmt.Fprintf(os.Stderr, "warning: %s\n", msg)
+	}
 
 	// Suffix mismatch is non-fatal; restore continues with a warning.
 	expectedExt := expectedBackupExt(db.Backup.Compression, db.Backup.Encryption.Enabled)
@@ -72,7 +108,7 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 
 	if db.Backup.Encryption.Enabled {
 		if db.Backup.Encryption.Password == "" {
-			return fmt.Errorf("restore requires encryption password but it is empty (db %s)", db.Name)
+			return fmt.Errorf("restore/decrypt: encryption password is empty (db=%s)", db.Name)
 		}
 		stream = decryptReader(stream, db.Backup.Encryption.Password, &cs)
 	}
@@ -80,15 +116,22 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 	if db.Backup.Compression {
 		stream = gunzipReader(stream, &cs)
 	}
+	br := bufio.NewReader(stream)
+	if err := ensureCustomDumpHeader(br); err != nil {
+		cs.closeAll()
+		return fmt.Errorf("restore/sniff: %w", err)
+	}
+	stream = br
 
 	conn := db.Connection
 
 	if verbose {
 		fmt.Printf(
-			"restore pipeline: db=%s decrypt=%v gunzip=%v tool=pg_restore\n",
+			"restore pipeline: db=%s decrypt=%v gunzip=%v tool=pg_restore clean=%v\n",
 			db.Name,
 			db.Backup.Encryption.Enabled,
 			db.Backup.Compression,
+			clean,
 		)
 	}
 
@@ -99,6 +142,9 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 		"--username", conn.User,
 		"--format=custom",
 		"--exit-on-error",
+	}
+	if clean {
+		args = append(args, "--clean", "--if-exists")
 	}
 
 	cmd := exec.CommandContext(ctx, "pg_restore", args...)
@@ -115,12 +161,12 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("pg_restore stdin: %w", err)
+		return fmt.Errorf("restore/pg_restore/stdin: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
-		return fmt.Errorf("start pg_restore: %w", err)
+		return fmt.Errorf("restore/pg_restore/start: %w", err)
 	}
 
 	_, copyErr := io.Copy(stdin, stream)
@@ -132,13 +178,64 @@ func RunRestore(ctx context.Context, cfg *config.Config, dbName string, fromPath
 	waitErr := cmd.Wait()
 
 	if copyErr != nil {
-		return fmt.Errorf("stream restore input: %w", copyErr)
+		return fmt.Errorf("restore/stream: %w", copyErr)
 	}
 	if waitErr != nil {
-		return fmt.Errorf("pg_restore failed: %w: %s", waitErr, stderr.String())
+		pgErr := strings.TrimSpace(stderr.String())
+		if strings.Contains(pgErr, "already exists") {
+			return fmt.Errorf(
+				"restore/pg_restore/wait: %w: %s\nhint: target database is not empty. rerun with --clean or restore into a fresh database",
+				waitErr,
+				pgErr,
+			)
+		}
+		return fmt.Errorf("restore/pg_restore/wait: %w: %s", waitErr, pgErr)
 	}
 
 	fmt.Printf("restore OK: db=%s from=%s\n", db.Name, fromPath)
+	return nil
+}
+
+func sniffRawKind(f *os.File) (string, error) {
+	var hdr [8]byte
+	n, err := io.ReadFull(f, hdr[:])
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", err
+	}
+	if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+		return "", seekErr
+	}
+	b := hdr[:n]
+	switch {
+	case len(b) >= len(encMagic) && bytes.Equal(b[:len(encMagic)], encMagic):
+		return "enc", nil
+	case len(b) >= len(gzipMagic) && bytes.Equal(b[:len(gzipMagic)], gzipMagic):
+		return "gzip", nil
+	case len(b) >= len(pgdmpMagic) && bytes.Equal(b[:len(pgdmpMagic)], pgdmpMagic):
+		return "pgdmp", nil
+	default:
+		return "unknown", nil
+	}
+}
+
+func expectedRawKind(compression bool, encryption bool) string {
+	if encryption {
+		return "enc"
+	}
+	if compression {
+		return "gzip"
+	}
+	return "pgdmp"
+}
+
+func ensureCustomDumpHeader(r *bufio.Reader) error {
+	h, err := r.Peek(len(pgdmpMagic))
+	if err != nil {
+		return fmt.Errorf("unable to read decoded stream header: %w", err)
+	}
+	if !bytes.Equal(h, pgdmpMagic) {
+		return fmt.Errorf("decoded stream is not pg_dump custom format (missing PGDMP header); if this is a plain SQL dump, restore with psql")
+	}
 	return nil
 }
 

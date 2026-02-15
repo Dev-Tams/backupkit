@@ -50,6 +50,14 @@ func main() {
 						Required: true,
 						Usage:    "path to backup file to restore",
 					},
+					&cli.BoolFlag{
+						Name:  "clean",
+						Usage: "drop database objects before recreating them (pg_restore --clean --if-exists)",
+					},
+					&cli.BoolFlag{
+						Name:  "strict-sniff",
+						Usage: "fail fast when backup header does not match restore config",
+					},
 				),
 				Action: func(c *cli.Context) error {
 					cfg, err := loadValidatedConfig(c.String("config"))
@@ -63,6 +71,8 @@ func main() {
 						c.String("db"),
 						c.String("from"),
 						c.Bool("verbose"),
+						c.Bool("clean"),
+						c.Bool("strict-sniff"),
 					)
 				},
 			},
