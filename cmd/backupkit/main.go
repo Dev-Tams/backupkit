@@ -58,6 +58,10 @@ func main() {
 						Name:  "strict-sniff",
 						Usage: "fail fast when backup header does not match restore config",
 					},
+					&cli.BoolFlag{
+						Name:  "allow-sql-fallback",
+						Usage: "if decoded stream is plain SQL, restore with psql instead of pg_restore",
+					},
 				),
 				Action: func(c *cli.Context) error {
 					cfg, err := loadValidatedConfig(c.String("config"))
@@ -73,6 +77,7 @@ func main() {
 						c.Bool("verbose"),
 						c.Bool("clean"),
 						c.Bool("strict-sniff"),
+						c.Bool("allow-sql-fallback"),
 					)
 				},
 			},

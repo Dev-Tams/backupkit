@@ -30,6 +30,7 @@ func RunRestore(
 	verbose bool,
 	clean bool,
 	strictSniff bool,
+	allowSQLFallback bool,
 ) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -117,9 +118,21 @@ func RunRestore(
 		stream = gunzipReader(stream, &cs)
 	}
 	br := bufio.NewReader(stream)
-	if err := ensureCustomDumpHeader(br); err != nil {
+	decodedKind, err := sniffDecodedKind(br)
+	if err != nil {
 		cs.closeAll()
 		return fmt.Errorf("restore/sniff: %w", err)
+	}
+	switch decodedKind {
+	case "pgdmp":
+	case "sql":
+		if !allowSQLFallback {
+			cs.closeAll()
+			return fmt.Errorf("restore/sniff: decoded stream looks like SQL text; rerun with --allow-sql-fallback to restore with psql")
+		}
+	default:
+		cs.closeAll()
+		return fmt.Errorf("restore/sniff: decoded stream is neither pg_dump custom format nor recognizable SQL text")
 	}
 	stream = br
 
@@ -133,6 +146,27 @@ func RunRestore(
 			db.Backup.Compression,
 			clean,
 		)
+	}
+
+	if decodedKind == "sql" {
+		if _, err := exec.LookPath("psql"); err != nil {
+			cs.closeAll()
+			return fmt.Errorf("psql not found in PATH: %w", err)
+		}
+		if clean {
+			fmt.Fprintln(os.Stderr, "warning: --clean is ignored when falling back to psql")
+		}
+		if verbose {
+			fmt.Printf("restore tool fallback: db=%s tool=psql\n", db.Name)
+		}
+		args := []string{
+			"--host", conn.Host,
+			"--port", strconv.Itoa(conn.Port),
+			"--dbname", conn.Database,
+			"--username", conn.User,
+			"-v", "ON_ERROR_STOP=1",
+		}
+		return runSQLRestore(ctx, args, conn.Password, stream, &cs, db.Name, fromPath)
 	}
 
 	args := []string{
@@ -196,6 +230,52 @@ func RunRestore(
 	return nil
 }
 
+func runSQLRestore(
+	ctx context.Context,
+	args []string,
+	password string,
+	stream io.Reader,
+	cs *closeStack,
+	dbName string,
+	fromPath string,
+) error {
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	if password != "" {
+		cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+	} else {
+		cmd.Env = os.Environ()
+	}
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("restore/psql/stdin: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("restore/psql/start: %w", err)
+	}
+
+	_, copyErr := io.Copy(stdin, stream)
+	_ = stdin.Close()
+	cs.closeAll()
+
+	waitErr := cmd.Wait()
+
+	if copyErr != nil {
+		return fmt.Errorf("restore/stream: %w", copyErr)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("restore/psql/wait: %w: %s", waitErr, strings.TrimSpace(stderr.String()))
+	}
+
+	fmt.Printf("restore OK: db=%s from=%s tool=psql\n", dbName, fromPath)
+	return nil
+}
+
 func sniffRawKind(f *os.File) (string, error) {
 	var hdr [8]byte
 	n, err := io.ReadFull(f, hdr[:])
@@ -228,15 +308,52 @@ func expectedRawKind(compression bool, encryption bool) string {
 	return "pgdmp"
 }
 
-func ensureCustomDumpHeader(r *bufio.Reader) error {
+func sniffDecodedKind(r *bufio.Reader) (string, error) {
 	h, err := r.Peek(len(pgdmpMagic))
 	if err != nil {
-		return fmt.Errorf("unable to read decoded stream header: %w", err)
+		return "", fmt.Errorf("unable to read decoded stream header: %w", err)
 	}
-	if !bytes.Equal(h, pgdmpMagic) {
-		return fmt.Errorf("decoded stream is not pg_dump custom format (missing PGDMP header); if this is a plain SQL dump, restore with psql")
+	if bytes.Equal(h, pgdmpMagic) {
+		return "pgdmp", nil
 	}
-	return nil
+
+	probe, err := r.Peek(256)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+		return "", fmt.Errorf("unable to inspect decoded stream: %w", err)
+	}
+	if looksLikeSQL(string(probe)) {
+		return "sql", nil
+	}
+	return "unknown", nil
+}
+
+func looksLikeSQL(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return false
+	}
+	upper := strings.ToUpper(trimmed)
+	prefixes := []string{
+		"--",
+		"/*",
+		"SET ",
+		"CREATE ",
+		"INSERT ",
+		"UPDATE ",
+		"DELETE ",
+		"BEGIN",
+		"COPY ",
+		"ALTER ",
+		"DO ",
+		"SELECT ",
+		"\\CONNECT ",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(upper, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func expectedBackupExt(compression bool, encryption bool) string {
