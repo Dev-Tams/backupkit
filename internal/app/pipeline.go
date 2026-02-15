@@ -41,7 +41,11 @@ func encryptReader(src io.Reader, password string, closers *closeStack) io.Reade
 
 	go func() {
 		_, err := encryption.EncryptAESGCM(pw, src, password)
-		_ = pw.CloseWithError(err)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
 	}()
 	return pr
 }
@@ -52,7 +56,11 @@ func gunzipReader(src io.Reader, closers *closeStack) io.Reader {
 
 	go func() {
 		_, err := compression.Gunzip(pw, src)
-		_ = pw.CloseWithError(err)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
 	}()
 
 	return pr
@@ -64,7 +72,11 @@ func decryptReader(src io.Reader, password string, closers *closeStack) io.Reade
 
 	go func() {
 		_, err := encryption.DecryptAESGCM(pw, src, password)
-		_ = pw.CloseWithError(err)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
 	}()
 
 	return pr

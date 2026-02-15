@@ -32,10 +32,6 @@ func RunRestore(
 	strictSniff bool,
 	allowSQLFallback bool,
 ) error {
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
 	// pick db
 	var db *config.DatabaseConfig
 	if dbName == "" {
@@ -107,17 +103,39 @@ func RunRestore(
 	stream := io.Reader(f)
 	var cs closeStack
 
-	if db.Backup.Encryption.Enabled {
+	// Build decode stages from file bytes, not config, so restore follows actual payload.
+	switch rawKind {
+	case "enc":
 		if db.Backup.Encryption.Password == "" {
 			return fmt.Errorf("restore/decrypt: encryption password is empty (db=%s)", db.Name)
 		}
 		stream = decryptReader(stream, db.Backup.Encryption.Password, &cs)
+	case "gzip":
+		stream = gunzipReader(stream, &cs)
+	case "pgdmp":
+		// no transform
+	case "unknown":
+		if !allowSQLFallback {
+			return fmt.Errorf("restore/sniff: unrecognized backup header; rerun with --allow-sql-fallback if this may be a plain SQL dump")
+		}
+	default:
+		return fmt.Errorf("restore/sniff: unsupported raw stream kind %q", rawKind)
 	}
 
-	if db.Backup.Compression {
-		stream = gunzipReader(stream, &cs)
-	}
 	br := bufio.NewReader(stream)
+	innerKind := rawKind
+	if rawKind == "enc" {
+		innerKind, err = sniffLeadingKind(br)
+		if err != nil {
+			cs.closeAll()
+			return fmt.Errorf("restore/sniff: %w", err)
+		}
+		if innerKind == "gzip" {
+			stream = gunzipReader(br, &cs)
+			br = bufio.NewReader(stream)
+		}
+	}
+
 	decodedKind, err := sniffDecodedKind(br)
 	if err != nil {
 		cs.closeAll()
@@ -140,10 +158,10 @@ func RunRestore(
 
 	if verbose {
 		fmt.Printf(
-			"restore pipeline: db=%s decrypt=%v gunzip=%v tool=pg_restore clean=%v\n",
+			"restore pipeline: db=%s raw=%s inner=%s tool=pg_restore clean=%v\n",
 			db.Name,
-			db.Backup.Encryption.Enabled,
-			db.Backup.Compression,
+			rawKind,
+			innerKind,
 			clean,
 		)
 	}
@@ -195,11 +213,13 @@ func RunRestore(
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		cs.closeAll()
 		return fmt.Errorf("restore/pg_restore/stdin: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
+		cs.closeAll()
 		return fmt.Errorf("restore/pg_restore/start: %w", err)
 	}
 
@@ -310,21 +330,45 @@ func expectedRawKind(compression bool, encryption bool) string {
 
 func sniffDecodedKind(r *bufio.Reader) (string, error) {
 	h, err := r.Peek(len(pgdmpMagic))
-	if err != nil {
-		return "", fmt.Errorf("unable to read decoded stream header: %w", err)
-	}
-	if bytes.Equal(h, pgdmpMagic) {
+	if err == nil && bytes.Equal(h, pgdmpMagic) {
 		return "pgdmp", nil
+	}
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+		return "", fmt.Errorf("unable to read decoded stream header: %w", err)
 	}
 
 	probe, err := r.Peek(256)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
 		return "", fmt.Errorf("unable to inspect decoded stream: %w", err)
 	}
+	if len(probe) == 0 {
+		return "", fmt.Errorf("decoded stream is empty or truncated")
+	}
 	if looksLikeSQL(string(probe)) {
 		return "sql", nil
 	}
 	return "unknown", nil
+}
+
+func sniffLeadingKind(r *bufio.Reader) (string, error) {
+	h, err := r.Peek(len(encMagic))
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
+		return "", fmt.Errorf("unable to inspect decoded stream prefix: %w", err)
+	}
+	if len(h) == 0 {
+		return "", fmt.Errorf("decoded stream is empty or truncated")
+	}
+	switch {
+	case len(h) >= len(gzipMagic) && bytes.Equal(h[:len(gzipMagic)], gzipMagic):
+		return "gzip", nil
+	case len(h) >= len(pgdmpMagic) && bytes.Equal(h[:len(pgdmpMagic)], pgdmpMagic):
+		return "pgdmp", nil
+	default:
+		if looksLikeSQL(string(h)) {
+			return "sql", nil
+		}
+		return "unknown", nil
+	}
 }
 
 func looksLikeSQL(s string) bool {
