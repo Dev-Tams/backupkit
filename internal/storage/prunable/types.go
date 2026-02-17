@@ -1,4 +1,4 @@
-package storage
+package prunable
 
 import (
 	"context"
