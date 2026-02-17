@@ -60,3 +60,52 @@ func (w *Writer) Close() error {
 	}
 	return nil
 }
+
+
+func (s *Storage) BasePath() string { return s.base }
+
+func (s *Storage) List(_ context.Context, prefix string) ([]storage.ObjectInfo, error) {
+	dir := filepath.Join(s.base, filepath.FromSlash(prefix))
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list dir: %w", err)
+	}
+
+	out := make([]storage.ObjectInfo, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		// Skip tmp files (shouldn't exist after successful backups, but safe)
+		if filepath.Ext(e.Name()) == ".tmp" {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat: %w", err)
+		}
+
+		out = append(out, storage.ObjectInfo{
+			Key:     filepath.ToSlash(filepath.Join(prefix, e.Name())),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+	}
+	return out, nil
+}
+
+func (s *Storage) Delete(_ context.Context, key string) error {
+	p := filepath.Join(s.base, filepath.FromSlash(key))
+	if err := os.Remove(p); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("delete %s: %w", key, err)
+	}
+	return nil
+}
