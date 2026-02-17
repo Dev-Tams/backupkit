@@ -56,7 +56,7 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 			return fmt.Errorf("backup failed for %s: %w", db.Name, err)
 		}
 
-		ts := time.Now().Format("20060102_150405.000000000Z")
+		ts := time.Now().UTC().Format("20060102_150405.000000000Z")
 
 		ext := ".dump"
 		if db.Backup.Compression {
@@ -104,6 +104,12 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 		}
 
 		fmt.Printf("backup OK: db=%s bytes=%d dest=%s\n", db.Name, n, dest)
+
+		// after successful backup
+		if err := ApplyRetention(ctx, db, st, verbose); err != nil {
+			return fmt.Errorf("retention failed for %s: %w", db.Name, err)
+		}
+
 	}
 
 	return nil
