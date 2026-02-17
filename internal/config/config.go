@@ -44,18 +44,17 @@ type EncryptionConfig struct {
 }
 
 type RetentionConfig struct {
-	KeepDaily   int `yaml:"keep_daily"`
-	KeepWeekly  int `yaml:"keep_weekly"`
-	KeepMonthly int `yaml:"keep_monthly"`
+	KeepDaily   int `yaml:"keep_daily" mapstructure:"keep_daily"`
+	KeepWeekly  int `yaml:"keep_weekly" mapstructure:"keep_weekly"`
+	KeepMonthly int `yaml:"keep_monthly" mapstructure:"keep_monthly"`
 }
 
 type StorageConfig struct {
-	Name   string   `yaml:"name"`
-	Type   string   `yaml:"type"`
-	Local  *LocalConfig `yaml:"local,omitempty"`
-	S3     *S3Config      `yaml:"s3,omitempty"`
+	Name  string       `yaml:"name"`
+	Type  string       `yaml:"type"`
+	Local *LocalConfig `yaml:"local,omitempty"`
+	S3    *S3Config    `yaml:"s3,omitempty"`
 }
-
 
 type LocalConfig struct {
 	Path string `yaml:"path"`
@@ -86,8 +85,6 @@ type NotificationDetails struct {
 	Headers  map[string]string `yaml:"headers"`
 }
 
-
-
 // match the config file with the yaml file
 func LoadConfig(path string) (*Config, error) {
 
@@ -104,7 +101,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf(" failed to unmarshall config :%w", err)
 	}
 	expandEnvVars(&cfg)
-	
+
 	return &cfg, nil
 }
 
@@ -112,34 +109,34 @@ func LoadConfig(path string) (*Config, error) {
 // Called os.ExpandEnv on each of the fields identified
 // and modify the needed places.
 func expandEnvVars(cfg *Config) {
-    if cfg == nil {
-        return
-    }
+	if cfg == nil {
+		return
+	}
 
-    for i := range cfg.Databases {
-        db := &cfg.Databases[i]
-        db.Connection.Password = os.ExpandEnv(db.Connection.Password)
-        db.Backup.Encryption.Password = os.ExpandEnv(db.Backup.Encryption.Password)
-    }
+	for i := range cfg.Databases {
+		db := &cfg.Databases[i]
+		db.Connection.Password = os.ExpandEnv(db.Connection.Password)
+		db.Backup.Encryption.Password = os.ExpandEnv(db.Backup.Encryption.Password)
+	}
 
-    for i := range cfg.Storage {
-        st := &cfg.Storage[i]
-        if st.S3 != nil {
-            st.S3.AccessKey = os.ExpandEnv(st.S3.AccessKey)
-            st.S3.SecretKey = os.ExpandEnv(st.S3.SecretKey)
-        }
-    }
+	for i := range cfg.Storage {
+		st := &cfg.Storage[i]
+		if st.S3 != nil {
+			st.S3.AccessKey = os.ExpandEnv(st.S3.AccessKey)
+			st.S3.SecretKey = os.ExpandEnv(st.S3.SecretKey)
+		}
+	}
 
-    for i := range cfg.Notifications {
-        nt := &cfg.Notifications[i]
-        if nt.Config.Username != "" {
-            nt.Config.Username = os.ExpandEnv(nt.Config.Username)
-        }
-        if nt.Config.Password != "" {
-            nt.Config.Password = os.ExpandEnv(nt.Config.Password)
-        }
-        if nt.Config.URL != "" {
-            nt.Config.URL = os.ExpandEnv(nt.Config.URL)
-        }
-    }
+	for i := range cfg.Notifications {
+		nt := &cfg.Notifications[i]
+		if nt.Config.Username != "" {
+			nt.Config.Username = os.ExpandEnv(nt.Config.Username)
+		}
+		if nt.Config.Password != "" {
+			nt.Config.Password = os.ExpandEnv(nt.Config.Password)
+		}
+		if nt.Config.URL != "" {
+			nt.Config.URL = os.ExpandEnv(nt.Config.URL)
+		}
+	}
 }
