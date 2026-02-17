@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/dev-tams/backupkit/internal/storage/prunable"
 )
 
 type Storage struct {
@@ -61,10 +63,9 @@ func (w *Writer) Close() error {
 	return nil
 }
 
-
 func (s *Storage) BasePath() string { return s.base }
 
-func (s *Storage) List(_ context.Context, prefix string) ([]storage.ObjectInfo, error) {
+func (s *Storage) List(_ context.Context, prefix string) ([]prunable.ObjectInfo, error) {
 	dir := filepath.Join(s.base, filepath.FromSlash(prefix))
 
 	entries, err := os.ReadDir(dir)
@@ -75,7 +76,7 @@ func (s *Storage) List(_ context.Context, prefix string) ([]storage.ObjectInfo, 
 		return nil, fmt.Errorf("list dir: %w", err)
 	}
 
-	out := make([]storage.ObjectInfo, 0, len(entries))
+	out := make([]prunable.ObjectInfo, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -90,7 +91,7 @@ func (s *Storage) List(_ context.Context, prefix string) ([]storage.ObjectInfo, 
 			return nil, fmt.Errorf("stat: %w", err)
 		}
 
-		out = append(out, storage.ObjectInfo{
+		out = append(out, prunable.ObjectInfo{
 			Key:     filepath.ToSlash(filepath.Join(prefix, e.Name())),
 			Size:    info.Size(),
 			ModTime: info.ModTime(),
