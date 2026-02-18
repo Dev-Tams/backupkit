@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ type daemonJob struct {
 	schedule schedule.CronSpec
 }
 
-func RunDaemon(ctx context.Context, cfg *config.Config, verbose bool) error {
+func RunDaemon(ctx context.Context, cfg *config.Config, verbose bool, runTimeout time.Duration) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -88,7 +89,18 @@ func RunDaemon(ctx context.Context, cfg *config.Config, verbose bool) error {
 			fmt.Printf("daemon: triggering %d backup job(s) at %s UTC\n", len(due), currentMinute.Format(time.RFC3339))
 		}
 
-		if err := RunBackup(ctx, &runCfg, verbose); err != nil {
+		runCtx := ctx
+		cancel := func() {}
+		if runTimeout > 0 {
+			runCtx, cancel = context.WithTimeout(ctx, runTimeout)
+		}
+
+		err := RunBackup(runCtx, &runCfg, verbose)
+		cancel()
+		if err != nil {
+			if runTimeout > 0 && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("daemon run timed out after %s", runTimeout)
+			}
 			return fmt.Errorf("daemon run: %w", err)
 		}
 
