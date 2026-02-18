@@ -1,6 +1,11 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dev-tams/backupkit/internal/schedule"
+)
 
 //simple range over values to validate needed variables
 
@@ -56,6 +61,12 @@ func (c *Config) Validate() error {
 		}
 		if _, ok := storageNames[db.Backup.Storage]; !ok {
 			return fmt.Errorf("databases[%d] backup.storage=%q not found in storage list", i, db.Backup.Storage)
+		}
+
+		if s := strings.TrimSpace(db.Backup.Schedule); s != "" {
+			if _, err := schedule.ParseCronSpec(s); err != nil {
+				return fmt.Errorf("databases[%d] backup.schedule=%q is invalid: %w", i, db.Backup.Schedule, err)
+			}
 		}
 	}
 	return nil
