@@ -92,13 +92,19 @@ func main() {
 			{
 				Name:  "daemon",
 				Usage: "run backups on a schedule",
-				Flags: backupOrRestoreFlags(),
+				Flags: append(
+					backupOrRestoreFlags(),
+					&cli.DurationFlag{
+						Name:  "run-timeout",
+						Usage: "max duration for each scheduled backup run (e.g. 30m, 2h). 0 disables timeout",
+					},
+				),
 				Action: func(c *cli.Context) error {
 					cfg, err := loadValidatedConfig(c.String("config"))
 					if err != nil {
 						return err
 					}
-					return app.RunDaemon(c.Context, cfg, c.Bool("verbose"))
+					return app.RunDaemon(c.Context, cfg, c.Bool("verbose"), c.Duration("run-timeout"))
 				},
 			},
 		},
