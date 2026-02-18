@@ -92,9 +92,13 @@ func main() {
 			{
 				Name:  "daemon",
 				Usage: "run backups on a schedule",
-				Action: func(_ *cli.Context) error {
-					fmt.Println("running daemon")
-					return nil
+				Flags: backupOrRestoreFlags(),
+				Action: func(c *cli.Context) error {
+					cfg, err := loadValidatedConfig(c.String("config"))
+					if err != nil {
+						return err
+					}
+					return app.RunDaemon(c.Context, cfg, c.Bool("verbose"))
 				},
 			},
 		},
