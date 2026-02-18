@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -85,7 +86,19 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 			stream = encryptReader(stream, db.Backup.Encryption.Password, &cs)
 		}
 
+		copyDone := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				// Force-unblock copy/write path when context is canceled or times out.
+				_ = r.Close()
+				_ = w.Close()
+			case <-copyDone:
+			}
+		}()
+
 		n, copyErr := io.Copy(w, stream)
+		close(copyDone)
 
 		// close order matters
 		cs.closeAll()
@@ -93,6 +106,12 @@ func RunBackup(ctx context.Context, cfg *config.Config, verbose bool) error {
 		closeWriteErr := w.Close()
 
 		if copyErr != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("backup timed out for %s: %w", db.Name, ctx.Err())
+			}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return fmt.Errorf("backup canceled for %s: %w", db.Name, ctx.Err())
+			}
 			// local writer will leave .tmp if not closed successfully; we closed it above.
 			return fmt.Errorf("write backup: %w", copyErr)
 		}
