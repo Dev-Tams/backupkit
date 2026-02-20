@@ -100,12 +100,37 @@ func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsUnsupportedNotificationType(t *testing.T) {
+func TestValidateAcceptsEmailNotification(t *testing.T) {
 	cfg := baseValidConfig()
 	cfg.Notifications = []NotificationConfig{
 		{
 			Type: "email",
 			On:   []string{"failure"},
+			Config: NotificationDetails{
+				SMTPHost: "smtp.example.com",
+				SMTPPort: 587,
+				From:     "backup@example.com",
+				To:       "devops@example.com",
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected email notification error: %v", err)
+	}
+}
+
+func TestValidateRejectsEmailWithoutHost(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Notifications = []NotificationConfig{
+		{
+			Type: "email",
+			On:   []string{"failure"},
+			Config: NotificationDetails{
+				SMTPPort: 587,
+				From:     "backup@example.com",
+				To:       "devops@example.com",
+			},
 		},
 	}
 
@@ -113,7 +138,32 @@ func TestValidateRejectsUnsupportedNotificationType(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected validation error, got nil")
 	}
-	if !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("expected unsupported type error, got: %v", err)
+	if !strings.Contains(err.Error(), "smtp_host") {
+		t.Fatalf("expected smtp_host error, got: %v", err)
+	}
+}
+
+func TestValidateRejectsEmailWithHalfCredentials(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Notifications = []NotificationConfig{
+		{
+			Type: "email",
+			On:   []string{"failure"},
+			Config: NotificationDetails{
+				SMTPHost: "smtp.example.com",
+				SMTPPort: 587,
+				From:     "backup@example.com",
+				To:       "devops@example.com",
+				Username: "user",
+			},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "set together") {
+		t.Fatalf("expected credentials pair error, got: %v", err)
 	}
 }
