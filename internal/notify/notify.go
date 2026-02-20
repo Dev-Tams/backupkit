@@ -53,6 +53,12 @@ func NewDispatcher(cfgs []config.NotificationConfig) (*Dispatcher, error) {
 				return nil, fmt.Errorf("notifications[%d] webhook: %w", i, err)
 			}
 			routes = append(routes, route{onSuccess: onSuccess, onFailure: onFailure, notifier: nf})
+		case "email":
+			nf, err := NewEmail(n.Config.SMTPHost, n.Config.SMTPPort, n.Config.From, n.Config.To, n.Config.Username, n.Config.Password)
+			if err != nil {
+				return nil, fmt.Errorf("notifications[%d] email: %w", i, err)
+			}
+			routes = append(routes, route{onSuccess: onSuccess, onFailure: onFailure, notifier: nf})
 		default:
 			return nil, fmt.Errorf("notifications[%d]: unsupported notification type %q", i, n.Type)
 		}
