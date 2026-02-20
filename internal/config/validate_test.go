@@ -64,3 +64,56 @@ func TestValidateAllowsEmptySchedule(t *testing.T) {
 		t.Fatalf("Validate() unexpected error for empty schedule: %v", err)
 	}
 }
+
+func TestValidateAcceptsWebhookNotification(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Notifications = []NotificationConfig{
+		{
+			Type: "webhook",
+			On:   []string{"both"},
+			Config: NotificationDetails{
+				URL: "https://example.com/hook",
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected notification error: %v", err)
+	}
+}
+
+func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Notifications = []NotificationConfig{
+		{
+			Type: "webhook",
+			On:   []string{"failure"},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "config.url") {
+		t.Fatalf("expected config.url error, got: %v", err)
+	}
+}
+
+func TestValidateRejectsUnsupportedNotificationType(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Notifications = []NotificationConfig{
+		{
+			Type: "email",
+			On:   []string{"failure"},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("expected unsupported type error, got: %v", err)
+	}
+}
