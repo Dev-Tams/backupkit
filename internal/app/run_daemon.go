@@ -99,6 +99,14 @@ func RunDaemon(ctx context.Context, cfg *config.Config, verbose bool, runTimeout
 		cancel()
 		if err != nil {
 			if runTimeout > 0 && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+				if verbose {
+					fmt.Printf(
+						"daemon: run timeout after %s at %s UTC for %d job(s)\n",
+						runTimeout,
+						currentMinute.Format(time.RFC3339),
+						len(due),
+					)
+				}
 				return fmt.Errorf("daemon run timed out after %s", runTimeout)
 			}
 			return fmt.Errorf("daemon run: %w", err)
