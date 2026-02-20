@@ -103,6 +103,24 @@ func (c *Config) Validate() error {
 			if strings.TrimSpace(n.Config.URL) == "" {
 				return fmt.Errorf("notifications[%d] webhook config.url is required", i)
 			}
+		case "email":
+			if strings.TrimSpace(n.Config.SMTPHost) == "" {
+				return fmt.Errorf("notifications[%d] email config.smtp_host is required", i)
+			}
+			if n.Config.SMTPPort <= 0 {
+				return fmt.Errorf("notifications[%d] email config.smtp_port must be > 0", i)
+			}
+			if strings.TrimSpace(n.Config.From) == "" {
+				return fmt.Errorf("notifications[%d] email config.from is required", i)
+			}
+			if strings.TrimSpace(n.Config.To) == "" {
+				return fmt.Errorf("notifications[%d] email config.to is required", i)
+			}
+			userSet := strings.TrimSpace(n.Config.Username) != ""
+			passSet := strings.TrimSpace(n.Config.Password) != ""
+			if userSet != passSet {
+				return fmt.Errorf("notifications[%d] email config.username and config.password must be set together", i)
+			}
 		default:
 			return fmt.Errorf("notifications[%d].type=%q is unsupported", i, n.Type)
 		}
