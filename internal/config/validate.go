@@ -69,5 +69,44 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+
+	for i, n := range c.Notifications {
+		t := strings.ToLower(strings.TrimSpace(n.Type))
+		if t == "" {
+			return fmt.Errorf("notifications[%d].type is required", i)
+		}
+
+		onSuccess := false
+		onFailure := false
+		if len(n.On) == 0 {
+			return fmt.Errorf("notifications[%d].on must include success, failure, or both", i)
+		}
+		for _, on := range n.On {
+			switch strings.ToLower(strings.TrimSpace(on)) {
+			case "success":
+				onSuccess = true
+			case "failure":
+				onFailure = true
+			case "both":
+				onSuccess = true
+				onFailure = true
+			default:
+				return fmt.Errorf("notifications[%d].on has unsupported value %q", i, on)
+			}
+		}
+		if !onSuccess && !onFailure {
+			return fmt.Errorf("notifications[%d].on must include success, failure, or both", i)
+		}
+
+		switch t {
+		case "webhook":
+			if strings.TrimSpace(n.Config.URL) == "" {
+				return fmt.Errorf("notifications[%d] webhook config.url is required", i)
+			}
+		default:
+			return fmt.Errorf("notifications[%d].type=%q is unsupported", i, n.Type)
+		}
+	}
+
 	return nil
 }
