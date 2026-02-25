@@ -14,6 +14,8 @@ import (
 	"github.com/dev-tams/backupkit/internal/storage"
 )
 
+const notificationTimeout = 5 * time.Second
+
 type BackupResult struct {
 	DB       string
 	Status   string
@@ -254,7 +256,17 @@ func notifyResult(ctx context.Context, dispatcher *notify.Dispatcher, res Backup
 		Error:    errMsg,
 	}
 
-	if err := dispatcher.Notify(ctx, event); err != nil && verbose {
+	notifyCtx, cancel := notificationContext(ctx)
+	defer cancel()
+
+	if err := dispatcher.Notify(notifyCtx, event); err != nil && verbose {
 		fmt.Printf("notification failed: db=%s status=%s err=%v\n", res.DB, res.Status, err)
 	}
+}
+
+func notificationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), notificationTimeout)
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), notificationTimeout)
 }
