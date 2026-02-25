@@ -362,4 +362,4 @@ Verify:
 
 ## License
 
-MIT (see `LICENSE`).
+APACHE 3.0(see `LICENSE`).
