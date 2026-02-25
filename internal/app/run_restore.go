@@ -20,6 +20,7 @@ var (
 	encMagic   = []byte("BKENC001")
 	gzipMagic  = []byte{0x1f, 0x8b}
 	pgdmpMagic = []byte("PGDMP")
+	execLookPath = exec.LookPath
 )
 
 func RunRestore(
@@ -53,10 +54,6 @@ func RunRestore(
 
 	if db.Type != "postgres" {
 		return fmt.Errorf("unsupported database type: %s {db: %s}", db.Name, db.Type)
-	}
-
-	if _, err := exec.LookPath("pg_restore"); err != nil {
-		return fmt.Errorf("pg_restore not found in PATH: %w", err)
 	}
 
 	f, err := os.Open(fromPath)
@@ -167,9 +164,9 @@ func RunRestore(
 	}
 
 	if decodedKind == "sql" {
-		if _, err := exec.LookPath("psql"); err != nil {
+		if err := validateRestoreToolAvailability(decodedKind); err != nil {
 			cs.closeAll()
-			return fmt.Errorf("psql not found in PATH: %w", err)
+			return err
 		}
 		if clean {
 			fmt.Fprintln(os.Stderr, "warning: --clean is ignored when falling back to psql")
@@ -185,6 +182,11 @@ func RunRestore(
 			"-v", "ON_ERROR_STOP=1",
 		}
 		return runSQLRestore(ctx, args, conn.Password, stream, &cs, db.Name, fromPath)
+	}
+
+	if err := validateRestoreToolAvailability(decodedKind); err != nil {
+		cs.closeAll()
+		return err
 	}
 
 	args := []string{
@@ -293,6 +295,22 @@ func runSQLRestore(
 	}
 
 	fmt.Printf("restore OK: db=%s from=%s tool=psql\n", dbName, fromPath)
+	return nil
+}
+
+func validateRestoreToolAvailability(decodedKind string) error {
+	switch decodedKind {
+	case "sql":
+		if _, err := execLookPath("psql"); err != nil {
+			return fmt.Errorf("psql not found in PATH: %w", err)
+		}
+	case "pgdmp":
+		if _, err := execLookPath("pg_restore"); err != nil {
+			return fmt.Errorf("pg_restore not found in PATH: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported decoded stream kind %q", decodedKind)
+	}
 	return nil
 }
 
