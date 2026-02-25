@@ -20,6 +20,20 @@ Also present in CLI (currently placeholders):
 - `init`
 - `test`
 
+## Planned Database Clients
+
+Planned (in order of priority):
+- PostgreSQL (existing implementation)
+- MySQL / MariaDB
+- SQLite
+- Additional engines based on demand
+
+Out of scope (for now):
+- Physical replication integration
+- WAL/PITR support
+- Database-specific cluster failover logic
+- Non-dump replication technologies
+
 ## What It Does
 
 - Streams PostgreSQL dumps from `pg_dump` directly into storage.

@@ -9,6 +9,20 @@ Thanks for contributing. This guide documents the expected development workflow 
 - Preserve current CLI behavior unless a change is intentional and documented.
 - Avoid breaking config schema compatibility without explicit migration notes.
 
+## Current Scope
+
+Planned database clients (priority order):
+- PostgreSQL (existing implementation)
+- MySQL / MariaDB
+- SQLite
+- Additional engines based on demand
+
+Out of scope (for now):
+- Physical replication integration
+- WAL/PITR support
+- Database-specific cluster failover logic
+- Non-dump replication technologies
+
 ## Development Setup
 
 Requirements:
@@ -121,4 +135,3 @@ Include:
 - Do not commit real credentials, tokens, or database passwords.
 - Use environment variables in config (`${VAR}` pattern).
 - Redact sensitive values in issues and PRs.
-
